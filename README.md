@@ -4,17 +4,19 @@ Documentation, tools &amp; downloads related to OpenRSF; a framework for ReShade
 # The gist
 The ORSP consists of three segments:
 
-    - Header:
+1. Header:
         A header is provided by maintainers. It will store standardized load OPs, and functions deemed useful by the majority (eg, uv2view). The header must not contain user-friendly ways to write to textures or any other way to break compatibility.
         
-    - Reference:
+2. Reference:
         A small reference *implementation* that has all the functionality that the standard has. Intentionally dumbed down.
         
-    - Implementation:
+3. Implementation:
         An .FX shader that generates and writes to all the relevant textures. Developed and optimized only by the community.
         
 
-The user must *only* include the *Header*, but implementations may create their own headers, too. This is intentionally unstandardized. 
+The user must *only* include the *Header*, but implementations may create their own headers, too. This is intentionally unstandardized.
+
+Implementations may be one of three types; official, where the creator intentionally implements the standard, in a different branch or otherwise, unofficial, where they give permission for maintainers to modify their code, and the safest licence-wise, the adapter, that acts as a translation later. The performance and applicability reduces with each level.
 
 # API
 Do not use old APIs. Force the use of wrappers where applicable. Recommendations include [DXVK](https://github.com/doitsujin/dxvk) and [dgVoodoo2](https://dege.freeweb.hu/dgVoodoo2/). DX9 and OpenGL are unsupported by the standard, but may be defined and exported by implementations.
@@ -22,16 +24,16 @@ Do not use old APIs. Force the use of wrappers where applicable. Recommendations
 # Depth, normals, positions and coordinate spaces
 ReShade provides two outputs for us developers:
 
-    - Back Buffer
+1. Back Buffer
     
-    - Linearized depth
+2. Linearized depth
     
 
 The backbuffer is simply the back of the buffer, what the game is currently drawing onto. It is picked up quite late in the process, and as such may contain things like UI, fog, particles etc. This is somewhat limiting, and very little can be done about it. Game-specific addons may be used to pick up and draw to an earlier buffer, but [REST](https://github.com/4lex4nder/ReshadeEffectShaderToggler) is a popular somewhat-universal solution. UI detection and fog accounting is recommended for depth-based shaders.
 
 Depth is provided in a linearized format. Correct setup of the global preproc guarantees its linearity, invertedness and even it being not upside-down. A header then passes the relevant data to our shaders.
 
-The position may be inferred from the depth. The standard defines two transformations: a correct one, that inverts the view and clip matricies from the FOV and resolution, respectively, and, a simple and fast one, that linearly scales the UV by depth.
+The position may be inferred from the depth. The standard defines two transformations: a correct one, that inverts the view and clip matricies from the FOV and resolution, respectively, and, a simple and fast one, that linearly scales the UV by depth. We define the coordinate space as a sensible for screen-space one; Y points down, X, right and Z forward.
 
 Normals are curiosly missing. However, since the world transformation exists, we may infer an inherently imprecise view-space normal by using the depth from 4 fragments forming a "+" sign. We use a total of 5 for any time we need precision, but we may get away with 3 when it is not required.
 
@@ -72,6 +74,77 @@ Motion vectors must store the UV offset of a fragment between the previous frame
 
 The way optical flow is done is entirely up to the implementation but, they must be stored as RGBA16F. The R and G must store u and v delta motion, the B must store *some* disocclusion/error mask. It doesn't have to be complex, and yet again, it's up to the implementation to define. The alpha is a freebie; it's usually should be filled with 1.0, as it helps debugging.
 
+# Color
+
+Color transformations are a somewhat complicated matter, so to avoid confusion and lower the rate of error, this module contains industry-leading, battle-tested color ops. 
+
+## Color spaces
+
+The BackBuffer contains data in an sRGB format in most titles. We reccommend the developer to conditionally handle scRGB and other types of HDR data explocitly using [preprocessors](https://github.com/crosire/reshade-shaders/blob/slim/REFERENCE.md#macros). But for simplicity's sake, the header provides you with automagic transformers and getter. Most color space defenitions are ported directly from [OpenColorIO](https://github.com/AcademySoftwareFoundation/OpenColorIO). Defined are transformations for:
+
+1. sRGB
+2. Linear sRGB
+3. scRGB
+4. HDR10 ST2084
+5. HDR10 HLG
+6. [OkLab and OkLCh](https://bottosson.github.io/posts/oklab/)
+7. ACEScg
+
+We reccommend transforming into a wide-gamut scene-reffered space, by first going linear, and then optionally applying one of of the predefined inverse-tonemappers, and transforming into something like ACEScg for general workflows, and OkLab for color proccessing. Before presenting, the image must be tonemapped, and transformed into its native color space. Make sure to mirror the order of operations, essentially keeping track of a transformation "stack". In case of HDR color spaces, whitepoints must be explicitly defined with uniform.
+
+## Inverse Tonemapping
+
+Inverse tonemapping serves to attempt to recover game HDR data, or make it up, with an ad-hoc function. We provide a few useful ones:
+
+1. Log exposure
+2. Luma-aware Reinhard
+3. Lottes
+
+While extra efforts could be made to match some common operators, it's relatively nieche as a use-case.
+
+We also reccommend pairing an inverse tonemapper with the same one. This helps protect the image's original contrast, whitepoint and exposure. Strating off of this general rule may lead to perceptually nicer images, particularly because of the filmic toe.
+
+## Tonemappers
+
+A large collection of tonemappers is provided. This is because for the few times where you will "just tonemap", getting the perfect look for a certain scenario may be desired. Always pair a tonemapper with HDR data!
+
+1. Luma-aware Reinhard
+2. Log exposure
+3. Lottes
+4. [ACES fit](https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/)
+
+# PRNG, QRNG and Dithering
+A lot of modern applications requre some form of random numbers. Uses include Monte-Carlo (GI, AO), and dithering/debanding. The standard defines a few practical approaches.
+
+1. [Hash](https://www.shadertoy.com/view/4djSRW)
+2. Bayer
+3. [GR](https://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/)
+4. [R2](https://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/)
+5. SBN
+6. [STBN](https://developer.nvidia.com/blog/rendering-in-real-time-with-spatiotemporal-blue-noise-textures-part-1/)
+
+These are split between the header and implementations. Blue noise, for one, uses precomputed textures, and to encourage improvements in spectral energy distribution, it's up to the implementation to define the time length and exact texture names. Hashes, bayer and R2 are all runtime-computable, and as such aren't implementable. Blue noise, on the other hand, is.
+
+We define SBN as a 512x512 tilable RGBA16 polychrome texture, where each channel stores an independant, uncorrelated source.
+
+STBN is a 128x128, monochrome R8 texture. Vectorization must occur via a large enough texture-space offset of the sample location to [not cause visible correlation](https://developer.nvidia.com/blog/rendering-in-real-time-with-spatiotemporal-blue-noise-textures-part-1/).
+
+noise getters must consume VPOS.
+
+everything but STBN must not be animated. 
+
+# Constants
+
+Since ReShade doesn't come with a math library, some constants have been header-defined. Constants are defined in ALL_CAPS_SNAKE, with the const keyword where possible. Hash-defs tend to have hard-to-debug issues, so this is entirely for stability's sake.
+
+We also include precomputed gaussian weights and offsets in 
+
+1. 3x3
+2. 5x5
+3. 7x7
+
+windows. The values must be normalized for energy conservation and preservation.
+
 # Textures and sampler names
 First off, this is the namespace structure:
 
@@ -79,19 +152,51 @@ First off, this is the namespace structure:
         namespace header {
             // header defined functions and consts. developers may alias this using preprocs.
         }
-        namespace implementation {
+        namespace shared {
             // textures as defined by standard, resides both in header and implementation for compatibility reasons.
         }
     }
+Inside of each inner namespace, all of the functions are categorized with their own (inner namespaces) modules. Those modules are:
+
+1. pos
+2. motion
+3. color
+4. random
+
+Pos contains everything for depth, normals, transformations etc.
+
+Motion houses everything for MVs
+
+Color contains color transformations
+
+Random houses RNG
+
+Everything that doesnt neatly fit into one category is contained outside of the modules.
+
+
 
 Textures must be prefixed with "t". Samplers share the name, but have a prefix "s".
 
+
 tDepthN: depth, with software MIP level as N
+
 tNormalN: geometric normals, software mips as N, though if none are made, 0 must be put at the end.
+
 tSmoothNormalN: optional smoothed normal, same as before
+
 tTexNormalN: smooth and textured normals, same as before
+
 tAlbedo
+
 tMV: motion
+
+tBN: spatial blue noise
+
+tSTBN: animated blue noise (must store current frame, not the atlas!)
+
+# Header uniforms
+
+For future support, things like FOV are defined as a uniform. An addon may force a certain value, but it defaults to 90.
 
 # Header functions
 The header must provide a set of getters, to avoid accidental RT use or otherwise illegal mutation.
@@ -112,4 +217,19 @@ float3 getAlbedo(...)
 
 float3 getMotion(...) as the alpha is undefined, gets motion and rejection
 
-*todo: expand*
+
+floatn getRandom(...) gets you white noise (ND)
+
+float R1(...) computes R2 with offset (1D)
+
+float2 R2(...) (2D)
+
+float GRNoise(...) returns R1 based noise (2D)
+
+float getBayer(...) (2D)
+
+floatn getBlue(...) (2D)
+
+floatn getSTBN(...) (2D)
+
+floatn blurNxN(sampler, uv, scalar = 1.0) is a shorthand blur call. it runs a single pass, and is not a substitute for dual kawase or the like.
