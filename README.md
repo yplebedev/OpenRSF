@@ -110,8 +110,15 @@ A large collection of tonemappers is provided. This is because for the few times
 
 1. Luma-aware Reinhard
 2. Log exposure
-3. Lottes
+3. [Lottes](https://www.shadertoy.com/view/Xdd3Rr)
 4. [ACES fit](https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/)
+5. [Baking Lab ACES](https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl)
+6. [Legacy Unreal Engine ACES port](https://github.com/yplebedev/UjelFX-ReShade-Effect-Pack-by-BFB/blob/d2e5713343b4f50175f4fd83e2c91a416c379b95/reshade-shaders/Shaders/UjelFX/UjelFX_includes/UjelUtilities.fxh#L74)
+7. ACES 1.3[reference needed]
+8. ACES 2.0 (That's enough aces!)[reference needed]
+9. AgX [reference needed]
+10. GT7 [ref]
+11. Uncharted 2 [ref]
 
 # PRNG, QRNG and Dithering
 A lot of modern applications requre some form of random numbers. Uses include Monte-Carlo (GI, AO), and dithering/debanding. The standard defines a few practical approaches.
