@@ -29,16 +29,22 @@ ReShade provides two outputs for us developers:
 2. Linearized depth
     
 
+Please note that because of the standard, implementations and game-specific addons may, in the future, interconnect.
+
 The backbuffer is simply the back of the buffer, what the game is currently drawing onto. It is picked up quite late in the process, and as such may contain things like UI, fog, particles etc. This is somewhat limiting, and very little can be done about it. Game-specific addons may be used to pick up and draw to an earlier buffer, but [REST](https://github.com/4lex4nder/ReshadeEffectShaderToggler) is a popular somewhat-universal solution. UI detection and fog accounting is recommended for depth-based shaders.
 
 Depth is provided in a linearized format. Correct setup of the global preproc guarantees its linearity, invertedness and even it being not upside-down. A header then passes the relevant data to our shaders.
 
-The position may be inferred from the depth. The standard defines two transformations: a correct one, that inverts the view and clip matricies from the FOV and resolution, respectively, and, a simple and fast one, that linearly scales the UV by depth. We define the coordinate space as a sensible for screen-space one; Y points down, X, right and Z forward.
+The position may be inferred from the depth. The standard defines two transformations: a correct one, that inverts the view and clip matricies from the FOV and resolution, respectively, and, a simple and fast one, that linearly scales the UV by depth. Please note that the transformation matricies must be stored as uniforms. We define the coordinate space as a sensible for screen-space one; Y points down, X, right and Z forward.
 
-Normals are curiosly missing. However, since the world transformation exists, we may infer an inherently imprecise view-space normal by using the depth from 4 fragments forming a "+" sign. We use a total of 5 for any time we need precision, but we may get away with 3 when it is not required.
+[Normals are curiosly missing](https://wickedengine.net/2019/09/improved-normal-reconstruction-from-depth/). However, since the world transformation exists, we may infer an inherently imprecise view-space normal by using the depth from 4 fragments forming a "+" sign. We use a total of 5 for any time we need precision, but we may get away with 3 when it is not required.
 
 
-Depth is to be stored in a 16-bit (R16), mipmappable texture. The sampler and header getter must allow the user to easily sample MIPs, hiding away any potential branching. Depth must always be stored at full resolution. The implementation must always also create software mipmaps, where the value of the resulting pixel must be the minimum of a 2x2 block.
+Depth is to be stored in a 16-bit ([R16](https://github.com/crosire/reshade-shaders/blob/slim/REFERENCE.md#reshade-fx-allows-semantics-to-be-used-on-texture-declarations-this-is-used-to-request-special-textures)), mipmappable texture. The sampler and header getter must allow the user to easily [sample MIPs](https://github.com/crosire/reshade-shaders/blob/slim/REFERENCE.md#sampler-object), hiding away any potential branching. Depth must always be stored at full resolution. The implementation must always also create software mipmaps, where the value of the resulting pixel must be the minimum of a 2x2 block.
+
+    if (x) {
+        return tex2Dlod(sampler, float4(uv, 0., 0.)) 
+    } else if (y) { return tex2Dlod(lowerQuality..... // fugly
 
 Position is gathered from either:
 
@@ -87,8 +93,9 @@ The BackBuffer contains data in an sRGB format in most titles. We reccommend the
 3. scRGB
 4. HDR10 ST2084
 5. HDR10 HLG
-6. [OkLab and OkLCh](https://bottosson.github.io/posts/oklab/)
-7. ACEScg
+6. CIE XYZ
+7. [OkLab and OkLCh](https://bottosson.github.io/posts/oklab/)
+8. ACEScg
 
 We reccommend transforming into a wide-gamut scene-reffered space, by first going linear, and then optionally applying one of of the predefined inverse-tonemappers, and transforming into something like ACEScg for general workflows, and OkLab for color proccessing. Before presenting, the image must be tonemapped, and transformed into its native color space. Make sure to mirror the order of operations, essentially keeping track of a transformation "stack". In case of HDR color spaces, whitepoints must be explicitly defined with uniform.
 
@@ -106,7 +113,7 @@ We also reccommend pairing an inverse tonemapper with the same one. This helps p
 
 ## Tonemappers
 
-A large collection of tonemappers is provided. This is because for the few times where you will "just tonemap", getting the perfect look for a certain scenario may be desired. Always pair a tonemapper with HDR data!
+A large collection of tonemappers is provided. This is because for the few times where you will "just tonemap", getting the perfect look for a certain scenario may be desired. Always pair a tonemapper with HDR data! Some tonemappers take in a specific color space. Failing to transform those correctly will create noticably incorrect hues.
 
 1. Luma-aware Reinhard
 2. Log exposure
@@ -120,6 +127,19 @@ A large collection of tonemappers is provided. This is because for the few times
 10. GT7 [ref]
 11. Uncharted 2 [ref]
 
+While, when applicable, actual arithmetics are used, in case of specific and complex transforms we bake LUTs from OCIO. This unfortunately incurrs a pretty high cost.
+
+If you'd like to use a tonemapper that doesn't implicitly collapse the color space, stick to ACES fits and the few simple ones we invert.
+
+## Good Practices
+
+1. Use the simplest and shortest set of transforms unless absolutely nescesarry
+2. Keep all actual internal math in HDR
+3. Do color correction in perceptual color spaces
+4. Separate luminance and color operations
+   4.1 Abuse OkLab
+5. Explicitly transform; while automatic methods do exist on the preproccessor base,  its highly not reccommended to use them for large projects
+
 # PRNG, QRNG and Dithering
 A lot of modern applications requre some form of random numbers. Uses include Monte-Carlo (GI, AO), and dithering/debanding. The standard defines a few practical approaches.
 
@@ -132,13 +152,21 @@ A lot of modern applications requre some form of random numbers. Uses include Mo
 
 These are split between the header and implementations. Blue noise, for one, uses precomputed textures, and to encourage improvements in spectral energy distribution, it's up to the implementation to define the time length and exact texture names. Hashes, bayer and R2 are all runtime-computable, and as such aren't implementable. Blue noise, on the other hand, is.
 
-We define SBN as a 512x512 tilable RGBA16 polychrome texture, where each channel stores an independant, uncorrelated source.
+We define SBN as a 512x512 tilable RGBA16 polychrome texture, where each channel stores an independant, uncorrelated source. This is expensive, but is useful for when it's useless to animate the texture. We would like to point out that any scroll, channel swap etc. of a SBN texture will not produce blue noise along time.
 
 STBN is a 128x128, monochrome R8 texture. Vectorization must occur via a large enough texture-space offset of the sample location to [not cause visible correlation](https://developer.nvidia.com/blog/rendering-in-real-time-with-spatiotemporal-blue-noise-textures-part-1/).
 
-noise getters must consume VPOS.
+Noise getters must consume VPOS.
 
-everything but STBN must not be animated. 
+Everything but STBN must never be written to by implementations.
+
+## Good Practices
+
+1. Do not inject randomness everywhere. If you add random, you get random.
+2. Use blue noise where repetition is a concern.
+3. Use LDS sparingly, with simple, low noise, low dimentional integrals, and/or aggresive filtering.
+4. Test the quality/perf ratios. Do not go off a whim.
+
 
 # Constants
 
