@@ -40,7 +40,7 @@ The position may be inferred from the depth. The standard defines two transforma
 [Normals are curiosly missing](https://wickedengine.net/2019/09/improved-normal-reconstruction-from-depth/). However, since the world transformation exists, we may infer an inherently imprecise view-space normal by using the depth from 4 fragments forming a "+" sign. We use a total of 5 for any time we need precision, but we may get away with 3 when it is not required.
 
 
-Depth is to be stored in a 16-bit ([R16](https://github.com/crosire/reshade-shaders/blob/slim/REFERENCE.md#reshade-fx-allows-semantics-to-be-used-on-texture-declarations-this-is-used-to-request-special-textures)), mipmappable texture. The sampler and header getter must allow the user to easily [sample MIPs](https://github.com/crosire/reshade-shaders/blob/slim/REFERENCE.md#sampler-object), hiding away any potential branching. Depth must always be stored at full resolution. The implementation must always also create software mipmaps, where the value of the resulting pixel must be the minimum of a 2x2 block.
+Depth is to be stored in a 16-bit ([R16](https://github.com/crosire/reshade-shaders/blob/slim/REFERENCE.md#reshade-fx-allows-semantics-to-be-used-on-texture-declarations-this-is-used-to-request-special-textures)), [mipmappable](https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-tex2dlod) texture. The sampler and header getter must allow the user to easily [sample MIPs](https://github.com/crosire/reshade-shaders/blob/slim/REFERENCE.md#sampler-object), hiding away any potential branching. Depth must always be stored at full resolution. The implementation must always also create software mipmaps, where the value of the resulting pixel must be the minimum of a 2x2 block.
 
     if (x) {
         return tex2Dlod(sampler, float4(uv, 0., 0.)) 
@@ -88,14 +88,15 @@ Color transformations are a somewhat complicated matter, so to avoid confusion a
 
 The BackBuffer contains data in an sRGB format in most titles. We reccommend the developer to conditionally handle scRGB and other types of HDR data explocitly using [preprocessors](https://github.com/crosire/reshade-shaders/blob/slim/REFERENCE.md#macros). But for simplicity's sake, the header provides you with automagic transformers and getter. Most color space defenitions are ported directly from [OpenColorIO](https://github.com/AcademySoftwareFoundation/OpenColorIO). Defined are transformations for:
 
-1. sRGB
-2. Linear sRGB
-3. scRGB
-4. HDR10 ST2084
-5. HDR10 HLG
-6. CIE XYZ
+1. [sRGB](https://www.color.org/chardata/rgb/srgb.xalter)
+2. Linear sRGB (identical to sRGB, minus the EOTF)
+3. [scRGB](https://www.color.org/chardata/rgb/scrgb.xalter)
+4. [HDR10 ST2084](https://hdr10plus.org/wp-content/uploads/2024/01/HDR10_Ecosystem_Whitepaper.pdf)
+5. HDR10 HL
+6. [CIE XYZ](https://en.wikipedia.org/wiki/CIE_1931_color_space)
 7. [OkLab and OkLCh](https://bottosson.github.io/posts/oklab/)
 8. ACEScg
+9. [Rec. 709](https://www.color.org/rec709.xalter)
 
 We reccommend transforming into a wide-gamut scene-reffered space, by first going linear, and then optionally applying one of of the predefined inverse-tonemappers, and transforming into something like ACEScg for general workflows, and OkLab for color proccessing. Before presenting, the image must be tonemapped, and transformed into its native color space. Make sure to mirror the order of operations, essentially keeping track of a transformation "stack". In case of HDR color spaces, whitepoints must be explicitly defined with uniform.
 
@@ -105,7 +106,7 @@ Inverse tonemapping serves to attempt to recover game HDR data, or make it up, w
 
 1. Log exposure
 2. Luma-aware Reinhard
-3. Lottes
+3. [Lottes](https://www.shadertoy.com/view/Xdd3Rr)
 
 While extra efforts could be made to match some common operators, it's relatively nieche as a use-case.
 
@@ -118,14 +119,13 @@ A large collection of tonemappers is provided. This is because for the few times
 1. Luma-aware Reinhard
 2. Log exposure
 3. [Lottes](https://www.shadertoy.com/view/Xdd3Rr)
-4. [ACES fit](https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/)
+4. [Narkowicz ACES fit](https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/)
 5. [Baking Lab ACES](https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl)
 6. [Legacy Unreal Engine ACES port](https://github.com/yplebedev/UjelFX-ReShade-Effect-Pack-by-BFB/blob/d2e5713343b4f50175f4fd83e2c91a416c379b95/reshade-shaders/Shaders/UjelFX/UjelFX_includes/UjelUtilities.fxh#L74)
-7. ACES 1.3[reference needed]
-8. ACES 2.0 (That's enough aces!)[reference needed]
-9. AgX [reference needed]
-10. GT7 [ref]
-11. Uncharted 2 [ref]
+7. ACES 2.0 (OCIO defined)
+8. [AgX](https://github.com/sobotka/AgX-S2O3)
+9. [GT7](https://blog.selfshadow.com/publications/s2025-shading-course/pdi/supplemental/gt7_tone_mapping.cpp)
+10. [Uncharted 2](http://filmicworlds.com/blog/filmic-tonemapping-operators/)
 
 While, when applicable, actual arithmetics are used, in case of specific and complex transforms we bake LUTs from OCIO. This unfortunately incurrs a pretty high cost.
 
