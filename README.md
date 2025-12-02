@@ -1,6 +1,8 @@
 # OpenRSF
 Documentation, tools &amp; downloads related to OpenRSF; a framework for ReShade developers and users. No more confusing, painful dependencies, less boilerplate.
 
+WARNING: Supremely unfinished. Nothing even close to a pre-aplha.
+
 # The gist
 The ORSP consists of three segments:
 
