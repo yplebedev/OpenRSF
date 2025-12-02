@@ -62,7 +62,7 @@ Position is gathered from either:
 where z is a user-defined depth, and q is a quality level for depth.
 
 
-Normals are to be stored in a 16-bit (RG16) texture, with optional lower-precision quality levels. Normals must be encoded using octaheral encoding. Must also similarly be sample-able with a single call and no branching.
+Normals are to be stored in a 16-bit (RG16) texture, with optional lower-precision quality levels. Normals must be encoded using [octaheral encoding](https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/). Must also similarly be sample-able with a single call and no branching.
 
 # Filtered Normals
 
