@@ -100,3 +100,5 @@ namespace OSRFShared {
 	
 	texture tSTBN { Width = 128; Height = 128; Format = R8; };
 	sampler sSTBN { Texture = tSTBN; };
+	
+}
