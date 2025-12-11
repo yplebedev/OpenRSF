@@ -328,7 +328,7 @@ float4 blur7x7_4(sampler input, float2 uv, float scale) {
 
 float3 getAutoLSRGB(float3 BackBufferColor) {
 	#if BUFFER_COLOR_SPACE == 0
-		return 0.rrr; // Unknown, probably rare enough atp.
+		return BackBufferColor; // Unknown, probably rare enough atp.
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 1 // sRGB
@@ -343,16 +343,8 @@ float3 getAutoLSRGB(float3 BackBufferColor) {
 		return saturate(float3(r, g, b));
 	#endif
 	
-	#if BUFFER_COLOR_SPACE == 2 // scRGB; same as sRGB but higher dynamic range. Since nobody would evvvver write to a nonFP tex, this should work.
-		float r = BackBufferColor.r;
-		float g = BackBufferColor.g;
-		float b = BackBufferColor.b;
-		
-		r = (r < 0.04045 ? r / 12.92 : pow((r + 0.055)/1.055, 2.4));
-		g = (g < 0.04045 ? g / 12.92 : pow((g + 0.055)/1.055, 2.4));
-		b = (b < 0.04045 ? b / 12.92 : pow((b + 0.055)/1.055, 2.4));
-		
-		return float3(r, g, b); // no clamp!
+	#if BUFFER_COLOR_SPACE == 2 // scRGB
+		return BackBufferColor;
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 2 // HDR10 ST2084
@@ -366,14 +358,14 @@ float3 getAutoLSRGB(float3 BackBufferColor) {
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		return 0.rrr; // Information is a bit scarse, this is a fun challenge for future me.
+		return 0.rrr; // Fake
 	#endif
 }
 
 
 float3 getInverse(float3 ToDisplay) {
 	#if BUFFER_COLOR_SPACE == 0
-		return 0.rrr; // Unknown, probably rare enough atp.
+		return ToDisplay; // Unknown, probably rare enough atp.
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 1 // sRGB
@@ -388,16 +380,8 @@ float3 getInverse(float3 ToDisplay) {
 		return saturate(float3(r, g, b));
 	#endif
 	
-	#if BUFFER_COLOR_SPACE == 2 // scRGB; same as sRGB but higher dynamic range. Since nobody would evvvver write to a nonFP tex, this should work.
-		float r = ToDisplay.r;
-		float g = ToDisplay.g;
-		float b = ToDisplay.b;
-		
-		r = (r <= 0.0031308 ? r * 12.92 : 1.055 * pow(r, 1/2.4) - 0.055);
-		g = (g <= 0.0031308 ? g * 12.92 : 1.055 * pow(g, 1/2.4) - 0.055);
-		b = (b <= 0.0031308 ? b * 12.92 : 1.055 * pow(b, 1/2.4) - 0.055);
-		
-		return float3(r, g, b);
+	#if BUFFER_COLOR_SPACE == 2 // scRGB
+		return ToDisplay;
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 2 // HDR10 ST2084
@@ -411,7 +395,7 @@ float3 getInverse(float3 ToDisplay) {
 	#endif
 	
 	#if BUFFER_COLOR_SPACE == 3 // HDR10 HLG, https://en.wikipedia.org/wiki/Hybrid_log%E2%80%93gamma
-		return 0.rrr; // Information is a bit scarse, this is a fun challenge for future me.
+		return 0.rrr; // Literally not real
 	#endif
 }
 
@@ -429,7 +413,7 @@ float3 getSRGB(float3 linearSRGB) {
 
 // directly from https://bottosson.github.io/posts/oklab/
 #define cbrtf(x) pow(x, 0.33333333)
-float3 linear_srgb_to_oklab(float3 c) 
+float3 lin2ok(float3 c) 
 {
     float l = 0.4122214708f * c.r + 0.5363325363f * c.g + 0.0514459929f * c.b;
 	float m = 0.2119034982f * c.r + 0.6806995451f * c.g + 0.1073969566f * c.b;
@@ -446,7 +430,7 @@ float3 linear_srgb_to_oklab(float3 c)
     );
 }
 
-float3 oklab_to_linear_srgb(float3 c) 
+float3 ok2lin(float3 c) 
 {
     float l_ = c.r + 0.3963377774f * c.g + 0.2158037573f * c.b;
     float m_ = c.r - 0.1055613458f * c.g - 0.0638541728f * c.b;
@@ -463,7 +447,7 @@ float3 oklab_to_linear_srgb(float3 c)
     );
 }
 
-float3 getXYZfromLinSRGB(float3 rgb) {
+float3 lsrbg2xyz(float3 rgb) {
 	float3x3 toXYZ = float3x3(
 		float3(0.4124564, 0.3575761, 0.1804375),
 		float3(0.2126729, 0.7151522, 0.0721750),
@@ -473,7 +457,17 @@ float3 getXYZfromLinSRGB(float3 rgb) {
 	return mul(toXYZ, rgb);
 }
 
-float3 getACES2065_1(float3 xyz) {
+float3 xyz2lsrgb(float3 xyz) {
+	float3x3 tosrgb = float3x3(
+		float3( 3.24045,   -1.53714, -0.498532),
+		float3(-0.969266,   1.87601,  0.0415561),
+		float3( 0.0556434, -0.204026, 1.05723)
+	);
+	
+	return mul(tosrgb, xyz);
+}
+
+float3 xyz2aces2065(float3 xyz) {
 	float3x3 toACES2065_1 = float3x3(
 		float3( 1.0498110175, 0.0000000000,-0.0000974845),
 		float3(-0.4959030231, 1.3733130458, 0.0982400361),
@@ -483,7 +477,7 @@ float3 getACES2065_1(float3 xyz) {
 	return mul(toACES2065_1, xyz);
 }
 
-float3 getACEScg(float3 ACES2065_1) {
+float3 aces20652cg(float3 ACES2065_1) {
 	float3x3 toACEScg = float3x3(
 		float3( 1.4514393161,-0.2365107469,-0.2149285693),
 		float3(-0.0765537734, 1.1762296998,-0.0996759264),
@@ -491,4 +485,32 @@ float3 getACEScg(float3 ACES2065_1) {
 	);
 	
 	return mul(toACEScg, ACES2065_1);
+}
+
+float3 cg2aces2065(float3 cg) {
+	float3x3 to2065 = float3x3(
+		float3( 0.695446,   0.140683,   0.164937 ),
+		float3( 0.0447911,  0.859674,   0.0961568),
+		float3(-0.00556189, 0.00405144, 1.00803  )
+	);
+	
+	return mul(to2065, cg);
+}
+
+float3 aces20652xyz(float3 ACES2065_1) {
+	float3x3 toxyz = float3x3(
+		float3( 0.952552, 0.0,       0.0000936786),
+		float3( 0.343966, 0.728166, -0.0721325),
+		float3( 0.0,      0.0,       1.00883)
+	);
+	
+	return mul(toxyz, ACES2065_1);
+}
+
+float3 xyz2cg(float3 xyz) {
+	return aces20652cg(xyz2aces2065(xyz));
+}
+
+float3 cg2xyz(float3 cg) {
+	return aces20652xyz(cg2aces2065(cg));
 }
