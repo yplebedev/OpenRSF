@@ -3,6 +3,7 @@
 
 #define RES(x) Width = BUFFER_WIDTH / x; Height = BUFFER_HEIGHT / x
 
+
 /*
                                            __                                                            __                                        __   ______                                             
                                           |  \                                                          |  \                                      |  \ /      \                                            
@@ -174,7 +175,17 @@ float3 getMotion(float2 uv) {
 	return tex2D(OSRFShared::sMotion, uv).r;
 }
 
-
+float3 getViewPos(float2 uv, float z, bool simple = false) {
+	if (simple) {
+		float3 pos = 0.;
+		pos.xy = uv * BUFFER_SCREEN_SIZE;
+		pos.z = z * RESHADE_DEPTH_LINEARIZATION_FAR_PLANE;
+		pos.xy *= pos.z;
+		return pos;
+	} else {
+		
+	}
+}
 
 float blur3x3_1(sampler input, float2 uv, float scale) {
 	float accum = 0;
@@ -411,8 +422,21 @@ float3 getSRGB(float3 linearSRGB) {
 	return saturate(float3(r, g, b));
 }
 
+float3 getLSRGB(float3 sRGB) {
+	float r = sRGB.r;
+	float g = sRGB.g;
+	float b = sRGB.b;
+		
+	r = (r <= 0.04045 ? r / 12.92 : pow((r + 0.055)/1.055, 2.4));
+	g = (g <= 0.04045 ? g / 12.92 : pow((g + 0.055)/1.055, 2.4));
+	b = (b <= 0.04045 ? b / 12.92 : pow((b + 0.055)/1.055, 2.4));
+		
+	return saturate(float3(r, g, b));
+}
+
 // directly from https://bottosson.github.io/posts/oklab/
 #define cbrtf(x) pow(x, 0.33333333)
+
 float3 lin2ok(float3 c) 
 {
     float l = 0.4122214708f * c.r + 0.5363325363f * c.g + 0.0514459929f * c.b;
@@ -445,6 +469,14 @@ float3 ok2lin(float3 c)
 		-1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s,
 		-0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s
     );
+}
+
+float3 oklch2ok(float3 lch) {
+	return float3(lch.r, lch.g*cos(lch.b), lch.g*sin(lch.b));
+}
+
+float3 ok2oklch(float3 ok) {
+	return float3(ok.r, length(ok.gb), atan2(ok.b, ok.g));
 }
 
 float3 lsrbg2xyz(float3 rgb) {
@@ -513,4 +545,96 @@ float3 xyz2cg(float3 xyz) {
 
 float3 cg2xyz(float3 cg) {
 	return aces20652xyz(cg2aces2065(cg));
+}
+
+// tonemapping...
+float3 getReinhardHDR(float3 SDR, float whitepoint, float saturation = 1.0) {
+	float luma = lin2ok(SDR).r * 0.5;
+    float3 delta = SDR - float3(luma, luma, luma);
+    float luma_tonemapped = max(-luma / (luma - 1 - rcp(whitepoint)), 0.000001);
+    return lerp(luma_tonemapped + delta, max(-SDR / (SDR - 1 - rcp(whitepoint)), 0.000001), saturation); // good when not tonemapping with rein
+}
+
+float3 getReinhardSDR(float3 HDR, float whitepoint, float saturation = 1.0) {
+	float luma = lin2ok(HDR).r * 0.5;
+	float3 delta = HDR - luma.rrr;
+	float luma_tonemapped = (luma * (1.0 + luma / (whitepoint * whitepoint))) / (1.0 + luma);
+	
+	float3 tonemapped = (HDR * (1.0 + HDR / (whitepoint * whitepoint))) / (1.0 + HDR);
+
+	return lerp(luma_tonemapped.rrr, tonemapped, saturate(saturation));
+}
+
+float3 max3(float x, float y, float z) { return max(x, max(y, z)); }
+float3 getLottesHDR(float3 SDR, float whitepoint) {
+	return SDR * (rcp(max(1.0 - max3(SDR.r, SDR.g, SDR.b) * whitepoint, 0.00000001)));
+}
+
+float3 getLottesSDR(float3 HDR, float whitepoint) {
+	return HDR * rcp(max3(HDR.r, HDR.g, HDR.b) * whitepoint + 1.0);
+}
+
+#ifndef slope
+	#define slope 0.88
+#endif 
+
+#ifndef toe
+	#define toe 0.55
+#endif 
+
+#ifndef shoulder
+	#define shoulder 0.26
+#endif 
+
+#ifndef black_c
+	#define black_c 0.0
+#endif 
+
+#ifndef white_c
+	#define white_c 0.04
+#endif 
+
+
+float aces_per_channel(float x) {
+	x = log10(x);
+	float s = 1.0; // whitepoint
+	float ga = slope;
+	float t0 = toe;
+	float t1 = black_c;
+	float s0 = shoulder;
+	float s1 = white_c;
+	
+	float ta = (1.0 - t0 - 0.18) / ga - 0.733;
+	float sa = (s0 - 0.18) / ga - 0.733;
+	float result = 0.0;
+	if (x < ta) {
+		result = s * (2 * (1.0 + t1 - t0) / (1.0 + exp(-2 * ga * (x - ta) / (1 + t1 - t0))) - t1);
+	} else if (x < sa) {
+		result = s * (ga * (x + 0.733) + 0.18);
+	} else {
+		result = s * (1.0 + s1 - 2 * (1 + s1 - s0) / (1.0 + exp(2 * ga * (x - sa) / (1 + s1 - s0))));
+	}
+	return result;
+}
+
+#ifndef sat_preservation
+	#define sat_preservation 1.0
+#endif
+
+#ifndef hue_preservation
+	#define hue_preservation 1.0
+#endif
+
+
+float3 getACESSDR(float3 rgb) {
+	float3 oklch = ok2oklch(lin2ok(rgb));
+	float3 tonemapped = float3(aces_per_channel(rgb.r), aces_per_channel(rgb.g), aces_per_channel(rgb.b));
+	float3 oklch_of_tonemapped = ok2oklch(lin2ok(tonemapped));
+	
+	oklch_of_tonemapped.b = lerp(oklch_of_tonemapped.b, oklch.b, hue_preservation * (dot(rgb, float3(1.0, 1.0, 1.0)) > 1.0));
+	// hue shift is actually very minor, but saturation is getting fucked a notch.
+	oklch_of_tonemapped.g = lerp(oklch_of_tonemapped.g, oklch.g, sat_preservation * (dot(rgb, float3(1.0, 1.0, 1.0)) < 1.0));
+	
+	
+	return ok2lin(oklch2ok(oklch_of_tonemapped));
 }
