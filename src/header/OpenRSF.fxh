@@ -45,7 +45,7 @@ static const float GAUSS_7[49] = {
     0/1003f  , 0/1003f  , 1/1003f  , 2/1003f  , 1/1003f  , 0/1003f  , 0/1003f  ,
 };
 
-uniform float FOV<hidden = true;> = 90.0;
+uniform float FOV<hidden = true;> = HALF_PI;
 
 uniform float PEAK_LUMINANCE<hidden=true;> = 1000.0/10000.0; // https://en.wikipedia.org/wiki/Perceptual_quantizer
 
@@ -183,7 +183,8 @@ float3 getViewPos(float2 uv, float z, bool simple = false) {
 		pos.xy *= pos.z;
 		return pos;
 	} else {
-		
+		float focalLength = rcp(tan(0.5 * FOV));
+		return 0.0.xxx;
 	}
 }
 
@@ -499,11 +500,14 @@ float3 xyz2lsrgb(float3 xyz) {
 	return mul(tosrgb, xyz);
 }
 
+
+
+
 float3 xyz2aces2065(float3 xyz) {
 	float3x3 toACES2065_1 = float3x3(
-		float3( 1.0498110175, 0.0000000000,-0.0000974845),
-		float3(-0.4959030231, 1.3733130458, 0.0982400361),
-		float3( 0.0000000000, 0.0000000000, 0.9912520182)
+		float3( 1.06349549153674,  0.006408910197529,-0.015806786587775),
+		float3(-0.492074128004177, 1.368223407498281, 0.091337088325457),
+		float3(-0.002816461639118, 0.004644171056578, 0.916418574549673)
 	);
 	
 	return mul(toACES2065_1, xyz);
@@ -511,9 +515,9 @@ float3 xyz2aces2065(float3 xyz) {
 
 float3 aces20652cg(float3 ACES2065_1) {
 	float3x3 toACEScg = float3x3(
-		float3( 1.4514393161,-0.2365107469,-0.2149285693),
-		float3(-0.0765537734, 1.1762296998,-0.0996759264),
-		float3( 0.0083161484,-0.0060324498, 0.9912520182)
+		float3( 1.4514393161, -0.2365107469, -0.2149285693),
+		float3(-0.0765537734,  1.1762296998, -0.0996759264),
+		float3( 0.0083161484, -0.0060324498,  0.9977163014)
 	);
 	
 	return mul(toACEScg, ACES2065_1);
@@ -521,9 +525,9 @@ float3 aces20652cg(float3 ACES2065_1) {
 
 float3 cg2aces2065(float3 cg) {
 	float3x3 to2065 = float3x3(
-		float3( 0.695446,   0.140683,   0.164937 ),
-		float3( 0.0447911,  0.859674,   0.0961568),
-		float3(-0.00556189, 0.00405144, 1.00803  )
+		float3( 0.6954522414, 0.1406786965, 0.1638690622),
+		float3( 0.0447945634, 0.8596711185, 0.0955343182),
+		float3(-0.0055258826, 0.0040252103, 1.0015006723)
 	);
 	
 	return mul(to2065, cg);
@@ -531,13 +535,16 @@ float3 cg2aces2065(float3 cg) {
 
 float3 aces20652xyz(float3 ACES2065_1) {
 	float3x3 toxyz = float3x3(
-		float3( 0.952552, 0.0,       0.0000936786),
-		float3( 0.343966, 0.728166, -0.0721325),
-		float3( 0.0,      0.0,       1.00883)
+		float3( 0.938279849239345, -0.00445144581227847, 0.0166275235564231),
+		float3( 0.337368890823117, 0.729521566676754, -0.066890457499083),
+		float3( 0.00117395084939056, -0.00371070640198378, 1.09159450636463)
 	);
 	
 	return mul(toxyz, ACES2065_1);
 }
+
+
+
 
 float3 xyz2cg(float3 xyz) {
 	return aces20652cg(xyz2aces2065(xyz));
