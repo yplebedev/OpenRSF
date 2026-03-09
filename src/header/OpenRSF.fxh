@@ -3,19 +3,15 @@
 
 #define RES(x) Width = BUFFER_WIDTH / x; Height = BUFFER_HEIGHT / x
 
+#define POINT_SAMPLE \
+	MagFilter = POINT;\
+	MinFilter = POINT;\
+	MipFilter = POINT
 
-/*
-                                           __                                                            __                                        __   ______                                             
-                                          |  \                                                          |  \                                      |  \ /      \                                            
-  _______   ______   _______    _______  _| $$_     _______                     ______   _______    ____| $$                   __    __  _______   \$$|  $$$$$$\ ______    ______   ______ ____    _______ 
- /       \ /      \ |       \  /       \|   $$ \   /       \                   |      \ |       \  /      $$                  |  \  |  \|       \ |  \| $$_  \$$/      \  /      \ |      \    \  /       \
-|  $$$$$$$|  $$$$$$\| $$$$$$$\|  $$$$$$$ \$$$$$$  |  $$$$$$$                    \$$$$$$\| $$$$$$$\|  $$$$$$$                  | $$  | $$| $$$$$$$\| $$| $$ \   |  $$$$$$\|  $$$$$$\| $$$$$$\$$$$\|  $$$$$$$
-| $$      | $$  | $$| $$  | $$ \$$    \   | $$ __  \$$    \                    /      $$| $$  | $$| $$  | $$                  | $$  | $$| $$  | $$| $$| $$$$   | $$  | $$| $$   \$$| $$ | $$ | $$ \$$    \ 
-| $$_____ | $$__/ $$| $$  | $$ _\$$$$$$\  | $$|  \ _\$$$$$$\                  |  $$$$$$$| $$  | $$| $$__| $$                  | $$__/ $$| $$  | $$| $$| $$     | $$__/ $$| $$      | $$ | $$ | $$ _\$$$$$$\
- \$$     \ \$$    $$| $$  | $$|       $$   \$$  $$|       $$                   \$$    $$| $$  | $$ \$$    $$                   \$$    $$| $$  | $$| $$| $$      \$$    $$| $$      | $$ | $$ | $$|       $$
-  \$$$$$$$  \$$$$$$  \$$   \$$ \$$$$$$$     \$$$$  \$$$$$$$                     \$$$$$$$ \$$   \$$  \$$$$$$$                    \$$$$$$  \$$   \$$ \$$ \$$       \$$$$$$  \$$       \$$  \$$  \$$ \$$$$$$$ 
-                                                                                                                                                                                                           
-                                                                                                                                                                                          */
+#if __RENDERER__ == 0x9000 || (__RENDERER__ >= 0x10000 && __RENDERER__ < 0x20000)
+	#warning "Potentially unsupported API used; consider using a wrapper."
+#endif
+
 
 static const float PI = 3.14159265358979;
 static const float TWO_PI = 2 * PI;
@@ -45,148 +41,114 @@ static const float GAUSS_7[49] = {
     0/1003f  , 0/1003f  , 1/1003f  , 2/1003f  , 1/1003f  , 0/1003f  , 0/1003f  ,
 };
 
-uniform float FOV<hidden = true;> = HALF_PI;
+uniform float FOV<hidden = false;> = HALF_PI; // radians, vfov!!!
 
-uniform float PEAK_LUMINANCE<hidden=true;> = 1000.0/10000.0; // https://en.wikipedia.org/wiki/Perceptual_quantizer
+uniform float PEAK_LUMINANCE<hidden=true;> = 1000.0/10000.0; // https://en.wikipedia.org/wiki/Perceptual_quantizer                                                                                                                                                      |__/             
 
-//     /$$$$$$$$                    /$$                                                                             /$$        /$$$$$$                                    /$$                              
-//    |__  $$__/                   | $$                                                                            | $$       /$$__  $$                                  | $$                              
-//       | $$  /$$$$$$  /$$   /$$ /$$$$$$   /$$   /$$  /$$$$$$   /$$$$$$   /$$$$$$$        /$$$$$$  /$$$$$$$   /$$$$$$$      | $$  \__/  /$$$$$$  /$$$$$$/$$$$   /$$$$$$ | $$  /$$$$$$   /$$$$$$   /$$$$$$$
-//       | $$ /$$__  $$|  $$ /$$/|_  $$_/  | $$  | $$ /$$__  $$ /$$__  $$ /$$_____/       |____  $$| $$__  $$ /$$__  $$      |  $$$$$$  |____  $$| $$_  $$_  $$ /$$__  $$| $$ /$$__  $$ /$$__  $$ /$$_____/
-//       | $$| $$$$$$$$ \  $$$$/   | $$    | $$  | $$| $$  \__/| $$$$$$$$|  $$$$$$         /$$$$$$$| $$  \ $$| $$  | $$       \____  $$  /$$$$$$$| $$ \ $$ \ $$| $$  \ $$| $$| $$$$$$$$| $$  \__/|  $$$$$$ 
-//       | $$| $$_____/  >$$  $$   | $$ /$$| $$  | $$| $$      | $$_____/ \____  $$       /$$__  $$| $$  | $$| $$  | $$       /$$  \ $$ /$$__  $$| $$ | $$ | $$| $$  | $$| $$| $$_____/| $$       \____  $$
-//       | $$|  $$$$$$$ /$$/\  $$  |  $$$$/|  $$$$$$/| $$      |  $$$$$$$ /$$$$$$$/      |  $$$$$$$| $$  | $$|  $$$$$$$      |  $$$$$$/|  $$$$$$$| $$ | $$ | $$| $$$$$$$/| $$|  $$$$$$$| $$       /$$$$$$$/
-//       |__/ \_______/|__/  \__/   \___/   \______/ |__/       \_______/|_______/        \_______/|__/  |__/ \_______/       \______/  \_______/|__/ |__/ |__/| $$____/ |__/ \_______/|__/      |_______/ 
-//                                                                                                                                                             | $$                                        
-//                                                                                                                                                             | $$                                        
-//                                                                                                                                                             |__/             
-
-namespace OSRFShared {
+namespace ORSFShared {
 	texture tAlbedo { RES(1); Format = RGB10A2; };
 	sampler sAlbedo { Texture = tAlbedo; };
 	
-	
-	
-	texture tDepth0 { RES(1); Format = R16; };
-	sampler sDepth0 { Texture = tDepth0; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
-	
-	texture tDepth1 { RES(2); Format = R16; };
-	sampler sDepth1 { Texture = tDepth1; };
-	
-	texture tDepth2 { RES(4); Format = R16; MipLevels = 4; };
-	sampler sDepth2 { Texture = tDepth2; MinLOD = 0.0f; MaxLOD = 1000.0f; };
-	
-	
+	texture tDepth { RES(1); Format = R16; MipLevels = 6; };
+	sampler sDepth { Texture = tDepth; POINT_SAMPLE; };
 	
 	texture tSmoothN { RES(1); Format = RG16; };
-	sampler sSmoothN { Texture = tSmoothN; };
+	sampler sSmoothN { Texture = tSmoothN; POINT_SAMPLE; };
+	
+	texture tGeoN { RES(1); Format = RG16; };
+	sampler sGeoN { Texture = tGeoN; POINT_SAMPLE; };
 	
 	texture tTexN { RES(1); Format = RG16; };
-	sampler sTexN { Texture = tTexN; };
-	
-	
-	
-	texture tNormal0 { RES(1); Format = RG16; };
-	sampler sNormal0 { Texture = tNormal0; };
-	
-	texture tNormal1 { RES(2); Format = RG16; };
-	sampler sNormal1 { Texture = tNormal1; };
-	
-	texture tNormal2 { RES(4); Format = RG16; MipLevels = 4; };
-	sampler sNormal2 { Texture = tNormal2; MinLOD = 0.0f; MaxLOD = 1000.0f; };
-	
+	sampler sTexN { Texture = tTexN; POINT_SAMPLE; };
 	
 	texture tMotion { RES(1); Format = RGBA16F; };
 	sampler sMotion { Texture = tMotion; };
-	
-	
-	texture tSTBN { Width = 128; Height = 128; Format = R8; };
-	sampler sSTBN { Texture = tSTBN; };
-	
 }
 
-//      /$$$$$$              /$$     /$$                                  
-//     /$$__  $$            | $$    | $$                                  
-//    | $$  \__/  /$$$$$$  /$$$$$$ /$$$$$$    /$$$$$$   /$$$$$$   /$$$$$$$
-//    | $$ /$$$$ /$$__  $$|_  $$_/|_  $$_/   /$$__  $$ /$$__  $$ /$$_____/
-//    | $$|_  $$| $$$$$$$$  | $$    | $$    | $$$$$$$$| $$  \__/|  $$$$$$ 
-//    | $$  \ $$| $$_____/  | $$ /$$| $$ /$$| $$_____/| $$       \____  $$
-//    |  $$$$$$/|  $$$$$$$  |  $$$$/|  $$$$/|  $$$$$$$| $$       /$$$$$$$/
-//     \______/  \_______/   \___/   \___/   \_______/|__/      |_______/ 
-//                                                                        
-//                                                                        
-//    (And utility)                                                             
+float2 OctWrap(float2 v)
+{
+    return (1.0- abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
+}
+ 
+float3 UVtoOCT(float2 xy)
+{
+	
+	float3 xyz = float3(2f * xy - 1f, 0.0);                
 
-// directly from https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
-// Krzysztof Narkowicz <--> ^
-float2 OctWrap(float2 v) {
-    return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
-}
- 
-float2 Encode(float3 n) {
-    n /= (abs(n.x) + abs(n.y) + abs(n.z));
-    n.xy = n.z >= 0.0 ? n.xy : OctWrap(n.xy);
-    n.xy = n.xy * 0.5 + 0.5;
-    return n.xy;
-}
- 
-float3 Decode(float2 f) {
-    f = f * 2.0 - 1.0;
- 
-    // https://twitter.com/Stubbesaurus/status/937994790553227264
-    float3 n = float3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
-    float t = saturate(-n.z);
-    n.xy += n.xy >= 0.0 ? -t : t;
-    return normalize(n);
-}
+	float2 posAbs = abs(xyz.xy);
+	xyz.z = 1.0 - (posAbs.x + posAbs.y);
 
-float3 getNormal(float2 uv, float LOD) {
-	float2 encoded = 0.;
-	if (LOD < 1.0) {
-		encoded = tex2D(OSRFShared::sNormal0, uv).rg;
-	} else if (LOD < 2.0) {
-		encoded = tex2D(OSRFShared::sNormal1, uv).rg;
-	} else if (LOD < 3.0) {
-		encoded = tex2D(OSRFShared::sNormal2, uv).rg;
-	} else {
-		encoded = tex2Dlod(OSRFShared::sNormal2, float4(uv, 0., floor(LOD))).rg;
+	if(xyz.z < 0) {
+        xyz.xy = sign(xyz.xy) * (1.0 - posAbs.yx);
 	}
-	return Decode(encoded);
+	return -xyz; //already normalized
+}
+
+float2 OCTtoUV(float3 xyz) {
+	xyz = -xyz;
+	float3 octsn = sign(xyz);
+	
+	float sd = dot(xyz, octsn);        
+	float3 oct = xyz / sd;
+	
+	if(oct.z < 0) {
+		float3 posAbs = abs(oct);
+		oct.xy = octsn.xy * (1.0 - posAbs.yx);
+	}
+		return 0.5 + 0.5 * oct.xy;
+}
+
+float3 getNormal(float2 uv) {
+	float2 encoded = tex2Dlod(ORSFShared::sTexN, float4(uv, 0., 0.)).rg;
+	return normalize(UVtoOCT(encoded));
 }
 
 float3 getAlbedo(float2 uv) {
-	return tex2D(OSRFShared::sAlbedo, uv).rgb;
+	return tex2D(ORSFShared::sAlbedo, uv).rgb;
 }
 
-float getDepth(float2 uv, float LOD) {
-	if (LOD < 1.0) {
-		return tex2D(OSRFShared::sDepth0, uv).r;
-	} else if (LOD < 2.0) {
-		return tex2D(OSRFShared::sDepth1, uv).r;
-	} else if (LOD < 3.0) {
-		return tex2D(OSRFShared::sDepth2, uv).r;
-	} else {
-		return tex2Dlod(OSRFShared::sDepth2, float4(uv, 0., floor(LOD))).r;
-	}
-	return 1.0;
+float getDepth(float2 uv, float LOD = 0.) {
+	return tex2Dlod(ORSFShared::sDepth, float4(uv, 0., LOD)).r;
 }
 
 float3 getMotion(float2 uv) {
-	return tex2D(OSRFShared::sMotion, uv).r;
+	return tex2D(ORSFShared::sMotion, uv).xyz;
 }
 
-float3 getViewPos(float2 uv, float z, bool simple = false) {
-	if (simple) {
-		float3 pos = 0.;
-		pos.xy = uv * BUFFER_SCREEN_SIZE;
-		pos.z = z * RESHADE_DEPTH_LINEARIZATION_FAR_PLANE;
-		pos.xy *= pos.z;
-		return pos;
-	} else {
-		float focalLength = rcp(tan(0.5 * FOV));
-		return 0.0.xxx;
-	}
+#define f RESHADE_DEPTH_LINEARIZATION_FAR_PLANE
+#define n 1.0
+
+float REMAP_PRIVATE(float t, float src_from, float src_to, float dest_from, float dest_to) {
+	return dest_from + (t - src_from) * (dest_to - dest_from) / (src_to - src_from);
 }
+
+#define remap(t, src_from, src_to, dest_from, dest_to) REMAP_PRIVATE(t, src_from, src_to, dest_from, dest_to)
+
+float3 getViewPos(float2 uv, float z) {
+	float fin_z = remap(z, 0., 1., n, f);
+	float2 norm = (uv - 0.5.xx) * 2.0;
+	float fl = 2.0 * tan(FOV * 0.5);
+	
+	float3 pos = float3(norm * fl * fin_z, fin_z);
+	pos.y *= rcp(BUFFER_ASPECT_RATIO);
+	
+	return pos;
+}
+
+float3 getViewPos(float3 uvz) {
+	float fin_z = remap(uvz.z, 0., 1., n, f);
+	float2 norm = (uvz.xy - 0.5.xx) * 2.0;
+	float fl = 2.0 * tan(FOV * 0.5);
+	
+	float3 pos = float3(norm * fl * fin_z, fin_z);
+	pos.y *= rcp(BUFFER_ASPECT_RATIO);
+	
+	return pos;
+}
+
+#undef remap
+#undef f
+#undef n
 
 float blur3x3_1(sampler input, float2 uv, float scale) {
 	float accum = 0;
@@ -324,21 +286,9 @@ float4 blur7x7_4(sampler input, float2 uv, float scale) {
 		}
 	}
 	return accum;
-}
+}                                          
 
-//      /$$$$$$            /$$                    
-//     /$$__  $$          | $$                    
-//    | $$  \__/  /$$$$$$ | $$  /$$$$$$   /$$$$$$ 
-//    | $$       /$$__  $$| $$ /$$__  $$ /$$__  $$
-//    | $$      | $$  \ $$| $$| $$  \ $$| $$  \__/
-//    | $$    $$| $$  | $$| $$| $$  | $$| $$      
-//    |  $$$$$$/|  $$$$$$/| $$|  $$$$$$/| $$      
-//     \______/  \______/ |__/ \______/ |__/      
-//                                                
-//                                                
-//                                                
-
-float3 getAutoLSRGB(float3 BackBufferColor) {
+float3 BackBuf_to_rec709(float3 BackBufferColor) {
 	#if BUFFER_COLOR_SPACE == 0
 		return BackBufferColor; // Unknown, probably rare enough atp.
 	#endif
@@ -375,7 +325,7 @@ float3 getAutoLSRGB(float3 BackBufferColor) {
 }
 
 
-float3 getInverse(float3 ToDisplay) {
+float3 rec709_to_BackBuf(float3 ToDisplay) {
 	#if BUFFER_COLOR_SPACE == 0
 		return ToDisplay; // Unknown, probably rare enough atp.
 	#endif
@@ -438,7 +388,7 @@ float3 getLSRGB(float3 sRGB) {
 // directly from https://bottosson.github.io/posts/oklab/
 #define cbrtf(x) pow(x, 0.33333333)
 
-float3 lin2ok(float3 c) 
+float3 rec709_to_ok(float3 c) 
 {
     float l = 0.4122214708f * c.r + 0.5363325363f * c.g + 0.0514459929f * c.b;
 	float m = 0.2119034982f * c.r + 0.6806995451f * c.g + 0.1073969566f * c.b;
@@ -455,7 +405,7 @@ float3 lin2ok(float3 c)
     );
 }
 
-float3 ok2lin(float3 c) 
+float3 ok_to_rec709(float3 c) 
 {
     float l_ = c.r + 0.3963377774f * c.g + 0.2158037573f * c.b;
     float m_ = c.r - 0.1055613458f * c.g - 0.0638541728f * c.b;
@@ -472,38 +422,38 @@ float3 ok2lin(float3 c)
     );
 }
 
-float3 oklch2ok(float3 lch) {
+float3 oklch_to_ok(float3 lch) {
 	return float3(lch.r, lch.g*cos(lch.b), lch.g*sin(lch.b));
 }
 
-float3 ok2oklch(float3 ok) {
+float3 ok_to_oklch(float3 ok) {
 	return float3(ok.r, length(ok.gb), atan2(ok.b, ok.g));
 }
 
-float3 lsrbg2xyz(float3 rgb) {
+float3 rec709_to_xyz(float3 rec) {
 	float3x3 toXYZ = float3x3(
 		float3(0.4124564, 0.3575761, 0.1804375),
 		float3(0.2126729, 0.7151522, 0.0721750),
 		float3(0.0193339, 0.1191920, 0.9503041)
 	);
 	
-	return mul(toXYZ, rgb);
+	return mul(toXYZ, rec);
 }
 
-float3 xyz2lsrgb(float3 xyz) {
-	float3x3 tosrgb = float3x3(
+float3 xyz_to_rec709(float3 xyz) {
+	float3x3 rec = float3x3(
 		float3( 3.24045,   -1.53714, -0.498532),
 		float3(-0.969266,   1.87601,  0.0415561),
 		float3( 0.0556434, -0.204026, 1.05723)
 	);
 	
-	return mul(tosrgb, xyz);
+	return mul(rec, xyz);
 }
 
 
 
 
-float3 xyz2aces2065(float3 xyz) {
+float3 xyz_to_aces2065(float3 xyz) {
 	float3x3 toACES2065_1 = float3x3(
 		float3( 1.06349549153674,  0.006408910197529,-0.015806786587775),
 		float3(-0.492074128004177, 1.368223407498281, 0.091337088325457),
@@ -513,7 +463,7 @@ float3 xyz2aces2065(float3 xyz) {
 	return mul(toACES2065_1, xyz);
 }
 
-float3 aces20652cg(float3 ACES2065_1) {
+float3 aces2065_to_cg(float3 ACES2065_1) {
 	float3x3 toACEScg = float3x3(
 		float3( 1.4514393161, -0.2365107469, -0.2149285693),
 		float3(-0.0765537734,  1.1762296998, -0.0996759264),
@@ -523,7 +473,7 @@ float3 aces20652cg(float3 ACES2065_1) {
 	return mul(toACEScg, ACES2065_1);
 }
 
-float3 cg2aces2065(float3 cg) {
+float3 cg_to_aces2065(float3 cg) {
 	float3x3 to2065 = float3x3(
 		float3( 0.6954522414, 0.1406786965, 0.1638690622),
 		float3( 0.0447945634, 0.8596711185, 0.0955343182),
@@ -533,7 +483,7 @@ float3 cg2aces2065(float3 cg) {
 	return mul(to2065, cg);
 }
 
-float3 aces20652xyz(float3 ACES2065_1) {
+float3 aces2065_to_xyz(float3 ACES2065_1) {
 	float3x3 toxyz = float3x3(
 		float3( 0.938279849239345, -0.00445144581227847, 0.0166275235564231),
 		float3( 0.337368890823117, 0.729521566676754, -0.066890457499083),
@@ -546,24 +496,25 @@ float3 aces20652xyz(float3 ACES2065_1) {
 
 
 
-float3 xyz2cg(float3 xyz) {
-	return aces20652cg(xyz2aces2065(xyz));
+float3 xyz_to_cg(float3 xyz) {
+	return aces2065_to_cg(xyz_to_aces2065(xyz));
 }
 
-float3 cg2xyz(float3 cg) {
-	return aces20652xyz(cg2aces2065(cg));
+float3 cg_to_xyz(float3 cg) {
+	return aces2065_to_xyz(cg_to_aces2065(cg));
 }
 
 // tonemapping...
+static const float eps = 2e-6;
 float3 getReinhardHDR(float3 SDR, float whitepoint, float saturation = 1.0) {
-	float luma = lin2ok(SDR).r * 0.5;
+	float luma = rec709_to_ok(SDR).r * 0.5;
     float3 delta = SDR - float3(luma, luma, luma);
-    float luma_tonemapped = max(-luma / (luma - 1 - rcp(whitepoint)), 0.000001);
-    return lerp(luma_tonemapped + delta, max(-SDR / (SDR - 1 - rcp(whitepoint)), 0.000001), saturation); // good when not tonemapping with rein
+    float luma_tonemapped = max(-luma / (luma - 1 - rcp(whitepoint)), eps);
+    return lerp(luma_tonemapped + delta, max(-SDR / (SDR - 1 - rcp(whitepoint)), eps), saturation); // good when not tonemapping with rein
 }
 
 float3 getReinhardSDR(float3 HDR, float whitepoint, float saturation = 1.0) {
-	float luma = lin2ok(HDR).r * 0.5;
+	float luma = rec709_to_ok(HDR).r * 0.5;
 	float3 delta = HDR - luma.rrr;
 	float luma_tonemapped = (luma * (1.0 + luma / (whitepoint * whitepoint))) / (1.0 + luma);
 	
@@ -574,7 +525,7 @@ float3 getReinhardSDR(float3 HDR, float whitepoint, float saturation = 1.0) {
 
 float3 max3(float x, float y, float z) { return max(x, max(y, z)); }
 float3 getLottesHDR(float3 SDR, float whitepoint) {
-	return SDR * (rcp(max(1.0 - max3(SDR.r, SDR.g, SDR.b) * whitepoint, 0.00000001)));
+	return SDR * (rcp(max(1.0 - max3(SDR.r, SDR.g, SDR.b) * whitepoint, eps)));
 }
 
 float3 getLottesSDR(float3 HDR, float whitepoint) {
@@ -634,14 +585,16 @@ float aces_per_channel(float x) {
 
 
 float3 getACESSDR(float3 rgb) {
-	float3 oklch = ok2oklch(lin2ok(rgb));
+	float3 oklch = ok_to_oklch(rec709_to_ok(rgb));
 	float3 tonemapped = float3(aces_per_channel(rgb.r), aces_per_channel(rgb.g), aces_per_channel(rgb.b));
-	float3 oklch_of_tonemapped = ok2oklch(lin2ok(tonemapped));
+	float3 oklch_of_tonemapped = ok_to_rec709(rec709_to_ok(tonemapped));
 	
 	oklch_of_tonemapped.b = lerp(oklch_of_tonemapped.b, oklch.b, hue_preservation * (dot(rgb, float3(1.0, 1.0, 1.0)) > 1.0));
 	// hue shift is actually very minor, but saturation is getting fucked a notch.
 	oklch_of_tonemapped.g = lerp(oklch_of_tonemapped.g, oklch.g, sat_preservation * (dot(rgb, float3(1.0, 1.0, 1.0)) < 1.0));
 	
 	
-	return ok2lin(oklch2ok(oklch_of_tonemapped));
+	return ok_to_rec709(oklch_to_ok(oklch_of_tonemapped));
 }
+
+#undef RES
