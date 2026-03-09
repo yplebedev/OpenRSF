@@ -4,15 +4,12 @@ Documentation, tools &amp; downloads related to OpenRSF; a framework for ReShade
 WARNING: Supremely unfinished. Nothing even close to a pre-aplha.
 
 # The gist
-The ORSP consists of three segments:
+The ORSF consists of two segments:
 
 1. Header:
         A header is provided by maintainers. It will store standardized load OPs, and functions deemed useful by the majority (eg, uv2view). The header must not contain user-friendly ways to write to textures or any other way to break compatibility.
         
-2. Reference:
-        A small reference *implementation* that has all the functionality that the standard has. Intentionally dumbed down.
-        
-3. Implementation:
+2. Implementation:
         An .FX shader that generates and writes to all the relevant textures. Developed and optimized only by the community.
         
 
